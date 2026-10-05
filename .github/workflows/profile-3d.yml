@@ -1,9 +1,6 @@
 name: GitHub-Profile-3D-Contrib
 
 on:
-  push:
-    branches:
-      - main
   schedule:
     # Run daily at 02:00 China Standard Time (UTC+8).
     - cron: "0 18 * * *"
@@ -24,7 +21,7 @@ jobs:
           USERNAME: ${{ github.repository_owner }}
       - name: Generate language breakdown from commit contributions
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PROFILE_READ_TOKEN || secrets.GITHUB_TOKEN }}
           USERNAME: ${{ github.repository_owner }}
         run: python scripts/generate-contribution-languages.py
       - name: Commit generated profile images
