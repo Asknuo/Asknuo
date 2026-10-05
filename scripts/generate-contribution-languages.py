@@ -22,6 +22,7 @@ query($login: String!) {
       endedAt
       totalCommitContributions
       hasAnyRestrictedContributions
+      restrictedContributionsCount
       commitContributionsByRepository(maxRepositories: 100) {
         repository { primaryLanguage { name color } }
         contributions(first: 100) {
@@ -179,7 +180,8 @@ def main() -> None:
         f"total={total}, repositories_returned={len(listed)}, "
         f"commits_in_returned_repositories={listed_count}, "
         f"repositories_over_100_active_days={incomplete}, "
-        f"restricted_details={bool(collection.get('hasAnyRestrictedContributions'))}"
+        f"restricted_details={bool(collection.get('hasAnyRestrictedContributions'))}, "
+        f"restricted_contributions={collection.get('restrictedContributionsCount', 0)}"
     )
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(make_svg(username, collection), encoding="utf-8")
