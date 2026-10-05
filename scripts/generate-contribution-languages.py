@@ -24,7 +24,10 @@ query($login: String!) {
       hasAnyRestrictedContributions
       commitContributionsByRepository(maxRepositories: 100) {
         repository { primaryLanguage { name color } }
-        contributions { totalCount }
+        contributions(first: 100) {
+          nodes { commitCount }
+          pageInfo { hasNextPage }
+        }
       }
     }
   }
@@ -68,13 +71,17 @@ def make_svg(username: str, collection: dict) -> str:
     language_commits: dict[str, int] = defaultdict(int)
     listed_commit_count = 0
     missing_language_commits = 0
+    incomplete_repositories = 0
     language_colors: dict[str, str] = {}
 
     repositories = collection.get("commitContributionsByRepository", [])
     for item in repositories:
         repository = item.get("repository") or {}
         language = repository.get("primaryLanguage")
-        count = (item.get("contributions") or {}).get("totalCount", 0)
+        contribution_days = item.get("contributions") or {}
+        count = sum(node.get("commitCount", 0) for node in contribution_days.get("nodes", []))
+        if (contribution_days.get("pageInfo") or {}).get("hasNextPage"):
+            incomplete_repositories += 1
         listed_commit_count += count
         if language and language.get("name"):
             name = language["name"]
@@ -90,12 +97,12 @@ def make_svg(username: str, collection: dict) -> str:
     if unlisted_commits:
         if collection.get("hasAnyRestrictedContributions"):
             hidden_label = "Restricted repo details hidden"
-            if len(repositories) >= 100:
-                hidden_label = "Restricted details / 100-repo limit"
         else:
             hidden_label = "Unlisted repository contributions"
-            if len(repositories) >= 100:
-                hidden_label += " (beyond top 100 repos)"
+        if len(repositories) >= 100:
+            hidden_label += " / top 100 repo limit"
+        if incomplete_repositories:
+            hidden_label += " / over 100 active days"
         language_commits[hidden_label] += unlisted_commits
 
     languages = sorted(language_commits.items(), key=lambda item: (-item[1], item[0].lower()))
@@ -157,12 +164,21 @@ def main() -> None:
         raise RuntimeError("GITHUB_TOKEN and USERNAME must be set")
     collection = fetch_contributions(token, username)
     listed = collection.get("commitContributionsByRepository", [])
-    listed_count = sum((item.get("contributions") or {}).get("totalCount", 0) for item in listed)
+    listed_count = sum(
+        node.get("commitCount", 0)
+        for item in listed
+        for node in (item.get("contributions") or {}).get("nodes", [])
+    )
+    incomplete = sum(
+        bool((item.get("contributions") or {}).get("pageInfo", {}).get("hasNextPage"))
+        for item in listed
+    )
     total = collection.get("totalCommitContributions", 0)
     print(
         "Contribution totals (no repository names): "
         f"total={total}, repositories_returned={len(listed)}, "
         f"commits_in_returned_repositories={listed_count}, "
+        f"repositories_over_100_active_days={incomplete}, "
         f"restricted_details={bool(collection.get('hasAnyRestrictedContributions'))}"
     )
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
