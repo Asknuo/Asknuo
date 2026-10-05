@@ -22,6 +22,7 @@ jobs:
       - name: Generate language breakdown from commit contributions
         env:
           GITHUB_TOKEN: ${{ secrets.PROFILE_READ_TOKEN || secrets.GITHUB_TOKEN }}
+          PROFILE_REPO_READ_TOKENS: ${{ secrets.PROFILE_REPO_READ_TOKENS }}
           USERNAME: ${{ github.repository_owner }}
         run: python scripts/generate-contribution-languages.py
       - name: Commit generated profile images
