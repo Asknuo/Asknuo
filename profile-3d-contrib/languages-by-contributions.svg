@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="210" viewBox="0 0 960 210">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="226" viewBox="0 0 960 226">
 <style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.title{font-size:25px;font-weight:700;fill:#24292f}.subtitle{font-size:14px;fill:#57606a}.label{font-size:15px;fill:#24292f}.count{font-size:13px;fill:#57606a}</style>
-<rect width="960" height="210" rx="8" fill="#ffffff"/>
+<rect width="960" height="226" rx="8" fill="#ffffff"/>
 <text class="title" x="32" y="42">Languages in GitHub commit contributions</text>
-<text class="subtitle" x="32" y="70">Asknuo  ·  2025-10-04 to 2026-10-05  ·  967 commits</text>
-<text class="label" x="32" y="130">Unlisted repository contributions</text>
+<text class="subtitle" x="32" y="70">Asknuo  ·  2025-10-04 to 2026-10-05  ·  969 commits</text>
+<text class="label" x="32" y="130">Private / inaccessible repo details</text>
 <rect x="290" y="112" width="550" height="20" rx="5" fill="#eaeef2"/>
 <rect x="290" y="112" width="550.0" height="20" rx="5" fill="#3572A5"/>
-<text class="count" x="930" y="127" text-anchor="end">915 · 94.6%</text>
+<text class="count" x="930" y="127" text-anchor="end">915 · 94.4%</text>
 <text class="label" x="32" y="164">Python</text>
 <rect x="290" y="146" width="550" height="20" rx="5" fill="#eaeef2"/>
-<rect x="290" y="146" width="31.3" height="20" rx="5" fill="#3572A5"/>
-<text class="count" x="930" y="161" text-anchor="end">52 · 5.4%</text>
+<rect x="290" y="146" width="32.5" height="20" rx="5" fill="#3572A5"/>
+<text class="count" x="930" y="161" text-anchor="end">54 · 5.6%</text>
+<text class="count" x="32" y="202">GitHub returned aggregate commits but not enough repository details to assign their languages.</text>
 </svg>
