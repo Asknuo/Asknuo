@@ -10,7 +10,6 @@ import re
 import sys
 import urllib.request
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 
 
@@ -22,6 +21,7 @@ query($login: String!) {
       startedAt
       endedAt
       totalCommitContributions
+      hasAnyRestrictedContributions
       commitContributionsByRepository(maxRepositories: 100) {
         repository { primaryLanguage { name color } }
         contributions { totalCount }
@@ -66,32 +66,48 @@ def safe_color(color: str | None, index: int) -> str:
 
 def make_svg(username: str, collection: dict) -> str:
     language_commits: dict[str, int] = defaultdict(int)
-    known_language_commits = 0
+    listed_commit_count = 0
+    missing_language_commits = 0
     language_colors: dict[str, str] = {}
 
-    for item in collection.get("commitContributionsByRepository", []):
+    repositories = collection.get("commitContributionsByRepository", [])
+    for item in repositories:
         repository = item.get("repository") or {}
         language = repository.get("primaryLanguage")
         count = (item.get("contributions") or {}).get("totalCount", 0)
+        listed_commit_count += count
         if language and language.get("name"):
             name = language["name"]
             language_commits[name] += count
-            known_language_commits += count
             language_colors.setdefault(name, language.get("color"))
+        else:
+            missing_language_commits += count
 
     total = collection.get("totalCommitContributions", 0)
-    other_commits = max(0, total - known_language_commits)
-    if other_commits:
-        language_commits["Other / unclassified"] += other_commits
+    unlisted_commits = max(0, total - listed_commit_count)
+    if missing_language_commits:
+        language_commits["Repository language unavailable"] += missing_language_commits
+    if unlisted_commits:
+        if collection.get("hasAnyRestrictedContributions"):
+            hidden_label = "Restricted repo details hidden"
+            if len(repositories) >= 100:
+                hidden_label = "Restricted details / 100-repo limit"
+        else:
+            hidden_label = "Unlisted repository contributions"
+            if len(repositories) >= 100:
+                hidden_label += " (beyond top 100 repos)"
+        language_commits[hidden_label] += unlisted_commits
 
     languages = sorted(language_commits.items(), key=lambda item: (-item[1], item[0].lower()))
     width = 960
     top = 112
     row_height = 34
-    height = max(190, top + max(1, len(languages)) * row_height + 30)
+    has_restricted_details = bool(collection.get("hasAnyRestrictedContributions"))
+    row_count = max(1, len(languages))
+    height = max(190, top + row_count * row_height + (46 if has_restricted_details else 30))
     max_count = max((count for _, count in languages), default=1)
-    bar_x = 250
-    bar_width = 590
+    bar_x = 290
+    bar_width = 550
     total_x = 930
 
     started = collection.get("startedAt", "")[:10]
@@ -124,6 +140,12 @@ def make_svg(username: str, collection: dict) -> str:
                 ]
             )
 
+    if has_restricted_details:
+        note_y = top + row_count * row_height + 22
+        elements.append(
+            f'<text class="count" x="32" y="{note_y}">GitHub marks some contributions as restricted; their repository languages are hidden from this token.</text>'
+        )
+
     elements.append("</svg>")
     return "\n".join(elements) + "\n"
 
@@ -134,6 +156,15 @@ def main() -> None:
     if not token or not username:
         raise RuntimeError("GITHUB_TOKEN and USERNAME must be set")
     collection = fetch_contributions(token, username)
+    listed = collection.get("commitContributionsByRepository", [])
+    listed_count = sum((item.get("contributions") or {}).get("totalCount", 0) for item in listed)
+    total = collection.get("totalCommitContributions", 0)
+    print(
+        "Contribution totals (no repository names): "
+        f"total={total}, repositories_returned={len(listed)}, "
+        f"commits_in_returned_repositories={listed_count}, "
+        f"restricted_details={bool(collection.get('hasAnyRestrictedContributions'))}"
+    )
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(make_svg(username, collection), encoding="utf-8")
     print(f"Wrote {OUTPUT}")
