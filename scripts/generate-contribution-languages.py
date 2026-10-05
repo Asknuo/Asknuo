@@ -24,7 +24,7 @@ query($login: String!) {
       hasAnyRestrictedContributions
       restrictedContributionsCount
       commitContributionsByRepository(maxRepositories: 100) {
-        repository { primaryLanguage { name color } }
+        repository { nameWithOwner primaryLanguage { name color } }
         contributions(first: 100) {
           nodes { commitCount }
           pageInfo { hasNextPage }
@@ -62,6 +62,49 @@ def fetch_contributions(token: str, username: str) -> dict:
     return user["contributionsCollection"]
 
 
+def commit_count(item: dict) -> int:
+    contributions = item.get("contributions") or {}
+    return sum(node.get("commitCount", 0) for node in contributions.get("nodes", []))
+
+
+def merge_contributions(collections: list[dict]) -> dict:
+    """Merge repo details returned by several read-only, owner-scoped tokens."""
+    base = dict(collections[0])
+    by_repository: dict[str, dict] = {}
+    for collection in collections:
+        for item in collection.get("commitContributionsByRepository", []):
+            repository = item.get("repository") or {}
+            name = repository.get("nameWithOwner")
+            if not name:
+                continue
+            current = by_repository.get(name)
+            candidate_count = commit_count(item)
+            current_count = commit_count(current) if current else -1
+            candidate_language = repository.get("primaryLanguage")
+            current_language = ((current or {}).get("repository") or {}).get("primaryLanguage")
+            if candidate_count > current_count or (candidate_count == current_count and candidate_language and not current_language):
+                by_repository[name] = item
+
+    base["commitContributionsByRepository"] = list(by_repository.values())
+    base["hasAnyRestrictedContributions"] = any(
+        collection.get("hasAnyRestrictedContributions") for collection in collections
+    )
+    base["restrictedContributionsCount"] = max(
+        (collection.get("restrictedContributionsCount", 0) for collection in collections),
+        default=0,
+    )
+    base["repositoryListLimitHit"] = any(
+        len(collection.get("commitContributionsByRepository", [])) >= 100 for collection in collections
+    )
+    base["repositoriesOver100ActiveDays"] = sum(
+        bool(
+            (item.get("contributions") or {}).get("pageInfo", {}).get("hasNextPage")
+        )
+        for item in by_repository.values()
+    )
+    return base
+
+
 def safe_color(color: str | None, index: int) -> str:
     if color and re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         return color
@@ -96,11 +139,8 @@ def make_svg(username: str, collection: dict) -> str:
     if missing_language_commits:
         language_commits["Repository language unavailable"] += missing_language_commits
     if unlisted_commits:
-        if collection.get("hasAnyRestrictedContributions"):
-            hidden_label = "Restricted repo details hidden"
-        else:
-            hidden_label = "Unlisted repository contributions"
-        if len(repositories) >= 100:
+        hidden_label = "Private / inaccessible repo details"
+        if collection.get("repositoryListLimitHit"):
             hidden_label += " / top 100 repo limit"
         if incomplete_repositories:
             hidden_label += " / over 100 active days"
@@ -110,7 +150,7 @@ def make_svg(username: str, collection: dict) -> str:
     width = 960
     top = 112
     row_height = 34
-    has_restricted_details = bool(collection.get("hasAnyRestrictedContributions"))
+    has_restricted_details = bool(unlisted_commits)
     row_count = max(1, len(languages))
     height = max(190, top + row_count * row_height + (46 if has_restricted_details else 30))
     max_count = max((count for _, count in languages), default=1)
@@ -151,7 +191,7 @@ def make_svg(username: str, collection: dict) -> str:
     if has_restricted_details:
         note_y = top + row_count * row_height + 22
         elements.append(
-            f'<text class="count" x="32" y="{note_y}">GitHub marks some contributions as restricted; their repository languages are hidden from this token.</text>'
+            f'<text class="count" x="32" y="{note_y}">GitHub returned aggregate commits but not enough repository details to assign their languages.</text>'
         )
 
     elements.append("</svg>")
@@ -163,13 +203,20 @@ def main() -> None:
     username = os.environ.get("USERNAME")
     if not token or not username:
         raise RuntimeError("GITHUB_TOKEN and USERNAME must be set")
-    collection = fetch_contributions(token, username)
+    collections = [fetch_contributions(token, username)]
+    repository_tokens = [
+        value.strip()
+        for value in os.environ.get("PROFILE_REPO_READ_TOKENS", "").splitlines()
+        if value.strip()
+    ]
+    for index, repository_token in enumerate(repository_tokens, start=1):
+        try:
+            collections.append(fetch_contributions(repository_token, username))
+        except Exception as error:
+            raise RuntimeError(f"Unable to read repository metadata with scoped token #{index}: {error}") from error
+    collection = merge_contributions(collections)
     listed = collection.get("commitContributionsByRepository", [])
-    listed_count = sum(
-        node.get("commitCount", 0)
-        for item in listed
-        for node in (item.get("contributions") or {}).get("nodes", [])
-    )
+    listed_count = sum(commit_count(item) for item in listed)
     incomplete = sum(
         bool((item.get("contributions") or {}).get("pageInfo", {}).get("hasNextPage"))
         for item in listed
@@ -177,9 +224,10 @@ def main() -> None:
     total = collection.get("totalCommitContributions", 0)
     print(
         "Contribution totals (no repository names): "
-        f"total={total}, repositories_returned={len(listed)}, "
+        f"total={total}, repositories_classified={len(listed)}, "
         f"commits_in_returned_repositories={listed_count}, "
         f"repositories_over_100_active_days={incomplete}, "
+        f"scoped_repository_tokens={len(repository_tokens)}, "
         f"restricted_details={bool(collection.get('hasAnyRestrictedContributions'))}, "
         f"restricted_contributions={collection.get('restrictedContributionsCount', 0)}"
     )
